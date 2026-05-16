@@ -3,9 +3,6 @@ import { useState, useEffect } from "react";
 const SUPABASE_URL = "https://wpwvfbgvpybaktthofrj.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VB0OGl00nJVPYqz_7Ykfhw_rwFdQUDK";
 
-// Configuración de API key de Anthropic (debe estar en variables de entorno en producción)
-const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || "";
-
 const SECTIONS = [
   { key: "highlights", label: "Highlights", emoji: "⚡", color: "#F59E0B", desc: "Logros o momentos destacados de la semana" },
   { key: "progress",   label: "Progress",   emoji: "📈", color: "#10B981", desc: "¿En qué avanzaste esta semana?" },
@@ -63,38 +60,28 @@ function AIInsights({ entries }: { entries: Entry[] }) {
   async function generateInsight() {
     if (!entries.length) return;
 
-    if (!ANTHROPIC_API_KEY) {
-      setInsight("⚠️ API key no configurada. Agregá VITE_ANTHROPIC_API_KEY en tu archivo .env");
-      return;
-    }
-
     setLoading(true);
     setInsight("");
     const summary = entries.map(e =>
       `${e.name}: Highlights: ${e.highlights} | Progress: ${e.progress} | Problems: ${e.problems} | Plans: ${e.plans}`
     ).join("\n");
+
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/analyze", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "x-api-key": ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01"
+          "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          messages: [{ role: "user", content: `Sos un lead de equipo. Analizá este HPPP semanal y generá un resumen ejecutivo breve en español (máx 150 palabras) con: principales logros del equipo, blockers críticos a resolver, y 2-3 recomendaciones accionables. Sé directo, sin preambles.\n\n${summary}` }]
-        })
+        body: JSON.stringify({ summary })
       });
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.error?.message || "Error en la API");
+        throw new Error(error.error || "Error en el análisis");
       }
 
       const data = await res.json();
-      setInsight(data.content?.map((b: { text?: string }) => b.text || "").join("") || "No se pudo generar.");
+      setInsight(data.insight || "No se pudo generar.");
     } catch (err) {
       setInsight(`❌ Error: ${err instanceof Error ? err.message : "No se pudo conectar con la IA"}`);
     }
