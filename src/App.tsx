@@ -35,6 +35,20 @@ interface Toast {
   id: number;
   message: string;
   type: "success" | "error" | "info";
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
+}
+
+interface Modal {
+  title: string;
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  confirmText?: string;
+  cancelText?: string;
+  type?: "danger" | "info";
 }
 
 function getWeekLabel(date?: Date) {
@@ -94,6 +108,26 @@ function ToastContainer({ toasts, onDismiss }: { toasts: Toast[], onDismiss: (id
             </span>
             <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 13 }}>{toast.message}</span>
           </div>
+          {toast.action && (
+            <button
+              onClick={toast.action.onClick}
+              style={{
+                background: "rgba(255,255,255,0.2)",
+                border: "1px solid rgba(255,255,255,0.3)",
+                color: "white",
+                borderRadius: 6,
+                padding: "6px 12px",
+                cursor: "pointer",
+                fontSize: 12,
+                fontFamily: "'Space Mono', monospace",
+                transition: "all 0.2s"
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.3)"}
+              onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.2)"}
+            >
+              {toast.action.label}
+            </button>
+          )}
           <button
             onClick={() => onDismiss(toast.id)}
             style={{
@@ -114,6 +148,148 @@ function ToastContainer({ toasts, onDismiss }: { toasts: Toast[], onDismiss: (id
           </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+function ModalDialog({ modal, darkMode }: { modal: Modal | null, darkMode: boolean }) {
+  if (!modal) return null;
+
+  return (
+    <div style={{
+      position: "fixed",
+      inset: 0,
+      zIndex: 10000,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 20,
+      animation: "fadeIn 0.2s ease"
+    }}
+    onClick={(e) => {
+      if (e.target === e.currentTarget) modal.onCancel();
+    }}>
+      {/* Backdrop */}
+      <div style={{
+        position: "absolute",
+        inset: 0,
+        background: "rgba(0, 0, 0, 0.7)",
+        backdropFilter: "blur(4px)"
+      }} />
+
+      {/* Modal */}
+      <div style={{
+        position: "relative",
+        background: darkMode ? "#0f172a" : "#ffffff",
+        borderRadius: 16,
+        boxShadow: "0 20px 60px rgba(0, 0, 0, 0.4)",
+        maxWidth: 440,
+        width: "100%",
+        animation: "scaleIn 0.2s ease",
+        border: darkMode ? "1px solid #1e293b" : "1px solid #e2e8f0"
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: "24px 24px 16px",
+          borderBottom: darkMode ? "1px solid #1e293b" : "1px solid #e2e8f0"
+        }}>
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12
+          }}>
+            <div style={{
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              background: modal.type === "danger" ? "rgba(239, 68, 68, 0.1)" : "rgba(99, 102, 241, 0.1)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 20
+            }}>
+              {modal.type === "danger" ? "⚠️" : "ℹ️"}
+            </div>
+            <h3 style={{
+              margin: 0,
+              color: darkMode ? "#f1f5f9" : "#0f172a",
+              fontFamily: "'Crimson Pro', serif",
+              fontSize: 20,
+              fontWeight: 600
+            }}>
+              {modal.title}
+            </h3>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{
+          padding: "20px 24px",
+          color: darkMode ? "#cbd5e1" : "#64748b",
+          fontFamily: "'Crimson Pro', serif",
+          fontSize: 15,
+          lineHeight: 1.6
+        }}>
+          {modal.message}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: "16px 24px 24px",
+          display: "flex",
+          gap: 12,
+          justifyContent: "flex-end"
+        }}>
+          <button
+            onClick={modal.onCancel}
+            style={{
+              background: "transparent",
+              border: darkMode ? "1px solid #334155" : "1px solid #cbd5e1",
+              color: darkMode ? "#94a3b8" : "#64748b",
+              borderRadius: 8,
+              padding: "10px 20px",
+              cursor: "pointer",
+              fontFamily: "'Space Mono', monospace",
+              fontSize: 13,
+              transition: "all 0.2s"
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = darkMode ? "#1e293b" : "#f8fafc";
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = "transparent";
+            }}
+          >
+            {modal.cancelText || "Cancelar"}
+          </button>
+          <button
+            onClick={modal.onConfirm}
+            style={{
+              background: modal.type === "danger" ? "linear-gradient(135deg, #ef4444, #dc2626)" : "linear-gradient(135deg, #6366f1, #8b5cf6)",
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+              padding: "10px 24px",
+              cursor: "pointer",
+              fontFamily: "'Space Mono', monospace",
+              fontSize: 13,
+              fontWeight: 600,
+              transition: "all 0.2s",
+              boxShadow: modal.type === "danger" ? "0 4px 12px rgba(239, 68, 68, 0.3)" : "0 4px 12px rgba(99, 102, 241, 0.3)"
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.transform = "scale(1.05)";
+              e.currentTarget.style.boxShadow = modal.type === "danger" ? "0 6px 16px rgba(239, 68, 68, 0.4)" : "0 6px 16px rgba(99, 102, 241, 0.4)";
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.transform = "scale(1)";
+              e.currentTarget.style.boxShadow = modal.type === "danger" ? "0 4px 12px rgba(239, 68, 68, 0.3)" : "0 4px 12px rgba(99, 102, 241, 0.3)";
+            }}
+          >
+            {modal.confirmText || "Confirmar"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -377,7 +553,7 @@ function AIInsights({ entries, darkMode }: { entries: Entry[], darkMode: boolean
   );
 }
 
-function EntryCard({ entry, onDelete, darkMode }: { entry: Entry; onDelete: (id: string) => void; darkMode: boolean }) {
+function EntryCard({ entry, darkMode, onDeleteClick }: { entry: Entry; darkMode: boolean; onDeleteClick: (entry: Entry) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
@@ -436,7 +612,7 @@ function EntryCard({ entry, onDelete, darkMode }: { entry: Entry; onDelete: (id:
             </span>
           )}
           <button
-            onClick={e => { e.stopPropagation(); if (confirm(`¿Eliminar el HPPP de ${entry.name}?`)) onDelete(entry.id); }}
+            onClick={e => { e.stopPropagation(); onDeleteClick(entry); }}
             style={{
               background: "transparent",
               border: darkMode ? "1px solid #374151" : "1px solid #cbd5e1",
@@ -535,6 +711,7 @@ export default function App() {
   const [selectedWeek, setSelectedWeek] = useState<string>("all");
   const [shake, setShake] = useState(false);
   const [isFirstHPPP, setIsFirstHPPP] = useState(true);
+  const [modal, setModal] = useState<Modal | null>(null);
 
   const nameInputRef = useRef<HTMLInputElement>(null);
 
@@ -601,12 +778,12 @@ export default function App() {
     if (view === "dashboard") loadEntries();
   }, [view]);
 
-  function showToast(message: string, type: Toast["type"]) {
+  function showToast(message: string, type: Toast["type"], action?: Toast["action"]) {
     const id = Date.now();
-    setToasts((prev: Toast[]) => [...prev, { id, message, type }]);
+    setToasts((prev: Toast[]) => [...prev, { id, message, type, action }]);
     setTimeout(() => {
       setToasts((prev: Toast[]) => prev.filter(t => t.id !== id));
-    }, 4000);
+    }, 6000);
   }
 
   function clearForm() {
@@ -646,14 +823,10 @@ export default function App() {
       }
 
       setForm({ name: "", highlights: "", progress: "", problems: "", plans: "" });
-      showToast("HPPP guardado exitosamente! 🎉", "success");
-
-      // Mostrar botón para ir al dashboard
-      setTimeout(() => {
-        if (confirm("¿Querés ver el dashboard del equipo?")) {
-          setView("dashboard");
-        }
-      }, 1000);
+      showToast("HPPP guardado exitosamente! 🎉", "success", {
+        label: "Ver Dashboard",
+        onClick: () => setView("dashboard")
+      });
     } catch {
       setError("Error al guardar. Intentá de nuevo.");
       showToast("Error al guardar HPPP", "error");
@@ -741,6 +914,17 @@ export default function App() {
           50% { opacity: 0; }
         }
 
+        @keyframes scaleIn {
+          from {
+            opacity: 0;
+            transform: scale(0.9);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
         @media (max-width: 768px) {
           #root {
             padding: 0 12px;
@@ -749,6 +933,7 @@ export default function App() {
       `}</style>
 
       <ToastContainer toasts={toasts} onDismiss={(id) => setToasts((prev: Toast[]) => prev.filter(t => t.id !== id))} />
+      <ModalDialog modal={modal} darkMode={darkMode} />
 
       <div style={{
         background: darkMode ? "linear-gradient(180deg, #0a0f1e 0%, #020817 100%)" : "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
@@ -1230,7 +1415,25 @@ export default function App() {
                     </button>
                   </div>
                 ) : (
-                  filteredEntries.map(e => <EntryCard key={e.id} entry={e} onDelete={handleDelete} darkMode={darkMode} />)
+                  filteredEntries.map(e => <EntryCard
+                    key={e.id}
+                    entry={e}
+                    darkMode={darkMode}
+                    onDeleteClick={(entry) => {
+                      setModal({
+                        title: "Eliminar HPPP",
+                        message: `¿Estás seguro que querés eliminar el HPPP de ${entry.name}? Esta acción no se puede deshacer.`,
+                        type: "danger",
+                        confirmText: "Eliminar",
+                        cancelText: "Cancelar",
+                        onConfirm: () => {
+                          handleDelete(entry.id);
+                          setModal(null);
+                        },
+                        onCancel: () => setModal(null)
+                      });
+                    }}
+                  />)
                 )}
                 {entries.length > 0 && <AIInsights entries={filteredEntries} darkMode={darkMode} />}
               </>
