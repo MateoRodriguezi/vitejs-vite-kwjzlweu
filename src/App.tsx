@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import confetti from "canvas-confetti";
 
 const SUPABASE_URL = "https://wpwvfbgvpybaktthofrj.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VB0OGl00nJVPYqz_7Ykfhw_rwFdQUDK";
@@ -19,6 +20,7 @@ interface Entry {
   plans: string;
   week: string;
   date: string;
+  created_at?: string;
 }
 
 interface FormState {
@@ -29,8 +31,14 @@ interface FormState {
   plans: string;
 }
 
-function getWeekLabel() {
-  const now = new Date();
+interface Toast {
+  id: number;
+  message: string;
+  type: "success" | "error" | "info";
+}
+
+function getWeekLabel(date?: Date) {
+  const now = date || new Date();
   const start = new Date(now);
   start.setDate(now.getDate() - now.getDay() + 1);
   return `Semana del ${start.toLocaleDateString("es-AR", { day: "numeric", month: "short" })}`;
@@ -53,15 +61,131 @@ async function sbFetch(path: string, options: RequestInit & { prefer?: string } 
   return text ? JSON.parse(text) : [];
 }
 
-function AIInsights({ entries }: { entries: Entry[] }) {
+function ToastContainer({ toasts, onDismiss }: { toasts: Toast[], onDismiss: (id: number) => void }) {
+  return (
+    <div style={{
+      position: "fixed",
+      top: 20,
+      right: 20,
+      zIndex: 9999,
+      display: "flex",
+      flexDirection: "column",
+      gap: 12,
+      maxWidth: "90vw",
+      width: 400
+    }}>
+      {toasts.map(toast => (
+        <div key={toast.id} style={{
+          background: toast.type === "success" ? "rgba(16, 185, 129, 0.95)" : toast.type === "error" ? "rgba(239, 68, 68, 0.95)" : "rgba(99, 102, 241, 0.95)",
+          color: "white",
+          padding: "14px 18px",
+          borderRadius: 12,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          animation: "slideInRight 0.3s ease, fadeIn 0.3s ease",
+          backdropFilter: "blur(10px)"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+            <span style={{ fontSize: 20 }}>
+              {toast.type === "success" ? "✓" : toast.type === "error" ? "⚠️" : "ℹ️"}
+            </span>
+            <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 13 }}>{toast.message}</span>
+          </div>
+          <button
+            onClick={() => onDismiss(toast.id)}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "white",
+              cursor: "pointer",
+              fontSize: 20,
+              padding: 0,
+              lineHeight: 1,
+              opacity: 0.7,
+              transition: "opacity 0.2s"
+            }}
+            onMouseEnter={e => e.currentTarget.style.opacity = "1"}
+            onMouseLeave={e => e.currentTarget.style.opacity = "0.7"}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function LoadingSkeleton() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {[1, 2, 3].map(i => (
+        <div key={i} style={{
+          background: "#0f172a",
+          border: "1px solid #1e293b",
+          borderRadius: 14,
+          padding: 20,
+          animation: "pulse 2s infinite"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{
+              width: 38,
+              height: 38,
+              borderRadius: "50%",
+              background: "#1e293b"
+            }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ width: "40%", height: 16, background: "#1e293b", borderRadius: 4, marginBottom: 8 }} />
+              <div style={{ width: "60%", height: 12, background: "#1e293b", borderRadius: 4 }} />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TypingAnimation({ text, onComplete }: { text: string, onComplete?: () => void }) {
+  const [displayText, setDisplayText] = useState("");
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    if (currentIndex < text.length) {
+      const timeout = setTimeout(() => {
+        setDisplayText(prev => prev + text[currentIndex]);
+        setCurrentIndex(prev => prev + 1);
+      }, 15); // velocidad de typing
+      return () => clearTimeout(timeout);
+    } else if (onComplete) {
+      onComplete();
+    }
+  }, [currentIndex, text, onComplete]);
+
+  return <>{displayText}</>;
+}
+
+function AIInsights({ entries, darkMode }: { entries: Entry[], darkMode: boolean }) {
   const [insight, setInsight] = useState("");
   const [loading, setLoading] = useState(false);
+  const [typing, setTyping] = useState(false);
+  const [rawInsight, setRawInsight] = useState("");
+  const insightRef = useRef<HTMLDivElement>(null);
 
   async function generateInsight() {
     if (!entries.length) return;
 
     setLoading(true);
     setInsight("");
+    setRawInsight("");
+    setTyping(false);
+
+    // Auto-scroll al análisis
+    setTimeout(() => {
+      insightRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 100);
+
     const summary = entries.map(e =>
       `${e.name}: Highlights: ${e.highlights} | Progress: ${e.progress} | Problems: ${e.problems} | Plans: ${e.plans}`
     ).join("\n");
@@ -81,58 +205,119 @@ function AIInsights({ entries }: { entries: Entry[] }) {
       }
 
       const data = await res.json();
-      setInsight(data.insight || "No se pudo generar.");
+      const result = data.insight || "No se pudo generar.";
+      setRawInsight(result);
+      setLoading(false);
+      setTyping(true);
     } catch (err) {
       setInsight(`❌ Error: ${err instanceof Error ? err.message : "No se pudo conectar con la IA"}`);
+      setLoading(false);
     }
-    setLoading(false);
+  }
+
+  function copyToClipboard() {
+    navigator.clipboard.writeText(insight);
+    // Trigger confetti
+    confetti({
+      particleCount: 50,
+      spread: 60,
+      origin: { y: 0.8 }
+    });
+  }
+
+  function exportAnalysis() {
+    const blob = new Blob([`HPPP Tracker - Análisis del equipo\n${getWeekLabel()}\n\n${insight}`], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `analisis-hppp-${new Date().toISOString().split("T")[0]}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
-    <div style={{
+    <div ref={insightRef} style={{
       marginTop: 32,
-      background: "linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)",
+      background: darkMode ? "linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)" : "linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)",
       borderRadius: 16,
       padding: 24,
-      border: "1px solid #4338ca",
-      boxShadow: "0 4px 24px rgba(99, 102, 241, 0.1)",
+      border: darkMode ? "1px solid #4338ca" : "1px solid #7dd3fc",
+      boxShadow: darkMode ? "0 4px 24px rgba(99, 102, 241, 0.1)" : "0 4px 24px rgba(14, 165, 233, 0.1)",
       transition: "all 0.3s ease"
     }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 22, animation: loading ? "pulse 2s infinite" : "none" }}>🤖</span>
-          <span style={{ color: "#a5b4fc", fontFamily: "'Crimson Pro', serif", fontSize: 18, fontWeight: 600 }}>Análisis IA del equipo</span>
+          <span style={{ color: darkMode ? "#a5b4fc" : "#0369a1", fontFamily: "'Crimson Pro', serif", fontSize: 18, fontWeight: 600 }}>
+            Análisis IA del equipo {loading && <span style={{ fontSize: 14 }}>⚡</span>}
+          </span>
         </div>
-        <button onClick={generateInsight} disabled={loading || !entries.length} style={{
-          background: !entries.length ? "#374151" : "linear-gradient(135deg, #6366f1, #8b5cf6)",
-          color: "white",
-          border: "none",
-          borderRadius: 8,
-          padding: "10px 20px",
-          fontFamily: "'Space Mono', monospace",
-          fontSize: 12,
-          cursor: !entries.length || loading ? "not-allowed" : "pointer",
-          opacity: !entries.length || loading ? 0.5 : 1,
-          transition: "all 0.2s ease",
-          transform: "scale(1)",
-          boxShadow: !entries.length ? "none" : "0 2px 8px rgba(99, 102, 241, 0.3)"
-        }}
-        onMouseEnter={e => {
-          if (!loading && entries.length) {
-            e.currentTarget.style.transform = "scale(1.05)";
-            e.currentTarget.style.boxShadow = "0 4px 12px rgba(99, 102, 241, 0.4)";
-          }
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.transform = "scale(1)";
-          e.currentTarget.style.boxShadow = "0 2px 8px rgba(99, 102, 241, 0.3)";
-        }}>
-          {loading ? "⏳ Analizando..." : "✨ Generar resumen"}
-        </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {insight && !loading && (
+            <>
+              <button onClick={copyToClipboard} style={{
+                background: darkMode ? "rgba(99, 102, 241, 0.2)" : "rgba(14, 165, 233, 0.2)",
+                color: darkMode ? "#a5b4fc" : "#0369a1",
+                border: darkMode ? "1px solid #6366f1" : "1px solid #0ea5e9",
+                borderRadius: 6,
+                padding: "8px 14px",
+                fontFamily: "'Space Mono', monospace",
+                fontSize: 11,
+                cursor: "pointer",
+                transition: "all 0.2s ease"
+              }}
+              onMouseEnter={e => e.currentTarget.style.transform = "scale(1.05)"}
+              onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}>
+                📋 Copiar
+              </button>
+              <button onClick={exportAnalysis} style={{
+                background: darkMode ? "rgba(99, 102, 241, 0.2)" : "rgba(14, 165, 233, 0.2)",
+                color: darkMode ? "#a5b4fc" : "#0369a1",
+                border: darkMode ? "1px solid #6366f1" : "1px solid #0ea5e9",
+                borderRadius: 6,
+                padding: "8px 14px",
+                fontFamily: "'Space Mono', monospace",
+                fontSize: 11,
+                cursor: "pointer",
+                transition: "all 0.2s ease"
+              }}
+              onMouseEnter={e => e.currentTarget.style.transform = "scale(1.05)"}
+              onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}>
+                💾 Exportar
+              </button>
+            </>
+          )}
+          <button onClick={generateInsight} disabled={loading || !entries.length} style={{
+            background: !entries.length ? "#374151" : darkMode ? "linear-gradient(135deg, #6366f1, #8b5cf6)" : "linear-gradient(135deg, #0ea5e9, #06b6d4)",
+            color: "white",
+            border: "none",
+            borderRadius: 8,
+            padding: "10px 20px",
+            fontFamily: "'Space Mono', monospace",
+            fontSize: 12,
+            cursor: !entries.length || loading ? "not-allowed" : "pointer",
+            opacity: !entries.length || loading ? 0.5 : 1,
+            transition: "all 0.2s ease",
+            transform: "scale(1)",
+            boxShadow: !entries.length ? "none" : darkMode ? "0 2px 8px rgba(99, 102, 241, 0.3)" : "0 2px 8px rgba(14, 165, 233, 0.3)"
+          }}
+          onMouseEnter={e => {
+            if (!loading && entries.length) {
+              e.currentTarget.style.transform = "scale(1.05)";
+              e.currentTarget.style.boxShadow = darkMode ? "0 4px 12px rgba(99, 102, 241, 0.4)" : "0 4px 12px rgba(14, 165, 233, 0.4)";
+            }
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.transform = "scale(1)";
+            e.currentTarget.style.boxShadow = !entries.length ? "none" : darkMode ? "0 2px 8px rgba(99, 102, 241, 0.3)" : "0 2px 8px rgba(14, 165, 233, 0.3)";
+          }}>
+            {loading ? "⏳ Analizando..." : "✨ Generar resumen"}
+          </button>
+        </div>
       </div>
       {loading && (
         <div style={{
-          color: "#c7d2fe",
+          color: darkMode ? "#c7d2fe" : "#0369a1",
           fontFamily: "'Space Mono', monospace",
           fontSize: 13,
           fontStyle: "italic",
@@ -145,17 +330,34 @@ function AIInsights({ entries }: { entries: Entry[] }) {
           </div>
         </div>
       )}
-      {insight && !loading && (
+      {typing && rawInsight && (
         <div style={{
-          color: "#e0e7ff",
+          color: darkMode ? "#e0e7ff" : "#0c4a6e",
           fontFamily: "'Crimson Pro', serif",
           fontSize: 16,
           lineHeight: 1.7,
           whiteSpace: "pre-wrap",
-          background: "rgba(15, 23, 42, 0.4)",
+          background: darkMode ? "rgba(15, 23, 42, 0.4)" : "rgba(255, 255, 255, 0.6)",
           borderRadius: 10,
           padding: 16,
-          border: "1px solid rgba(99, 102, 241, 0.2)",
+          border: darkMode ? "1px solid rgba(99, 102, 241, 0.2)" : "1px solid rgba(14, 165, 233, 0.2)",
+          animation: "fadeIn 0.5s ease"
+        }}>
+          <TypingAnimation text={rawInsight} onComplete={() => setInsight(rawInsight)} />
+          <span style={{ animation: "blink 1s infinite" }}>|</span>
+        </div>
+      )}
+      {insight && !loading && !typing && (
+        <div style={{
+          color: darkMode ? "#e0e7ff" : "#0c4a6e",
+          fontFamily: "'Crimson Pro', serif",
+          fontSize: 16,
+          lineHeight: 1.7,
+          whiteSpace: "pre-wrap",
+          background: darkMode ? "rgba(15, 23, 42, 0.4)" : "rgba(255, 255, 255, 0.6)",
+          borderRadius: 10,
+          padding: 16,
+          border: darkMode ? "1px solid rgba(99, 102, 241, 0.2)" : "1px solid rgba(14, 165, 233, 0.2)",
           animation: "fadeIn 0.5s ease"
         }}>
           {insight}
@@ -163,7 +365,7 @@ function AIInsights({ entries }: { entries: Entry[] }) {
       )}
       {!insight && !loading && (
         <div style={{
-          color: "#6366f1",
+          color: darkMode ? "#6366f1" : "#0369a1",
           fontFamily: "'Space Mono', monospace",
           fontSize: 12,
           padding: "12px 0"
@@ -175,7 +377,7 @@ function AIInsights({ entries }: { entries: Entry[] }) {
   );
 }
 
-function EntryCard({ entry, onDelete }: { entry: Entry; onDelete: (id: string) => void }) {
+function EntryCard({ entry, onDelete, darkMode }: { entry: Entry; onDelete: (id: string) => void; darkMode: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
@@ -185,14 +387,14 @@ function EntryCard({ entry, onDelete }: { entry: Entry; onDelete: (id: string) =
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       style={{
-        background: isHovered ? "#1a1f35" : "#0f172a",
-        border: isHovered ? "1px solid #334155" : "1px solid #1e293b",
+        background: isHovered ? (darkMode ? "#1a1f35" : "#f1f5f9") : (darkMode ? "#0f172a" : "#ffffff"),
+        border: isHovered ? (darkMode ? "1px solid #334155" : "1px solid #cbd5e1") : (darkMode ? "1px solid #1e293b" : "1px solid #e2e8f0"),
         borderRadius: 14,
         padding: 20,
         marginBottom: 14,
         cursor: "pointer",
         transition: "all 0.2s ease",
-        boxShadow: isHovered ? "0 4px 16px rgba(0, 0, 0, 0.3)" : "none",
+        boxShadow: isHovered ? (darkMode ? "0 4px 16px rgba(0, 0, 0, 0.3)" : "0 4px 16px rgba(0, 0, 0, 0.1)") : "none",
         transform: isHovered ? "translateY(-2px)" : "translateY(0)"
       }}
     >
@@ -217,8 +419,8 @@ function EntryCard({ entry, onDelete }: { entry: Entry; onDelete: (id: string) =
             {entry.name.slice(0, 2).toUpperCase()}
           </div>
           <div>
-            <div style={{ color: "#f1f5f9", fontFamily: "'Crimson Pro', serif", fontSize: 17, fontWeight: 600 }}>{entry.name}</div>
-            <div style={{ color: "#64748b", fontFamily: "'Space Mono', monospace", fontSize: 11 }}>{entry.week} · {entry.date}</div>
+            <div style={{ color: darkMode ? "#f1f5f9" : "#0f172a", fontFamily: "'Crimson Pro', serif", fontSize: 17, fontWeight: 600 }}>{entry.name}</div>
+            <div style={{ color: darkMode ? "#64748b" : "#94a3b8", fontFamily: "'Space Mono', monospace", fontSize: 11 }}>{entry.week} · {entry.date}</div>
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -237,9 +439,9 @@ function EntryCard({ entry, onDelete }: { entry: Entry; onDelete: (id: string) =
             onClick={e => { e.stopPropagation(); if (confirm(`¿Eliminar el HPPP de ${entry.name}?`)) onDelete(entry.id); }}
             style={{
               background: "transparent",
-              border: "1px solid #374151",
+              border: darkMode ? "1px solid #374151" : "1px solid #cbd5e1",
               borderRadius: 6,
-              color: "#64748b",
+              color: darkMode ? "#64748b" : "#94a3b8",
               padding: "4px 10px",
               cursor: "pointer",
               fontFamily: "'Space Mono', monospace",
@@ -253,14 +455,14 @@ function EntryCard({ entry, onDelete }: { entry: Entry; onDelete: (id: string) =
             }}
             onMouseLeave={e => {
               e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = "#64748b";
-              e.currentTarget.style.borderColor = "#374151";
+              e.currentTarget.style.color = darkMode ? "#64748b" : "#94a3b8";
+              e.currentTarget.style.borderColor = darkMode ? "#374151" : "#cbd5e1";
             }}
           >
             ×
           </button>
           <span style={{
-            color: "#475569",
+            color: darkMode ? "#475569" : "#94a3b8",
             fontSize: 16,
             transition: "transform 0.3s ease",
             transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
@@ -282,7 +484,7 @@ function EntryCard({ entry, onDelete }: { entry: Entry; onDelete: (id: string) =
             <div
               key={s.key}
               style={{
-                background: "#1e293b",
+                background: darkMode ? "#1e293b" : "#f8fafc",
                 borderRadius: 10,
                 padding: 14,
                 borderLeft: `3px solid ${s.color}`,
@@ -301,12 +503,12 @@ function EntryCard({ entry, onDelete }: { entry: Entry; onDelete: (id: string) =
                 {s.emoji} {s.label.toUpperCase()}
               </div>
               <div style={{
-                color: "#cbd5e1",
+                color: darkMode ? "#cbd5e1" : "#334155",
                 fontFamily: "'Crimson Pro', serif",
                 fontSize: 15,
                 lineHeight: 1.5
               }}>
-                {entry[s.key as keyof Entry] || <span style={{ color: "#475569", fontStyle: "italic" }}>—</span>}
+                {entry[s.key as keyof Entry] || <span style={{ color: darkMode ? "#475569" : "#94a3b8", fontStyle: "italic" }}>—</span>}
               </div>
             </div>
           ))}
@@ -319,20 +521,78 @@ function EntryCard({ entry, onDelete }: { entry: Entry; onDelete: (id: string) =
 export default function App() {
   const [view, setView] = useState<"form" | "dashboard">("form");
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [filteredEntries, setFilteredEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState<FormState>({ name: "", highlights: "", progress: "", problems: "", plans: "" });
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem("darkMode");
+    return saved ? JSON.parse(saved) : true;
+  });
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedWeek, setSelectedWeek] = useState<string>("all");
+  const [shake, setShake] = useState(false);
+  const [isFirstHPPP, setIsFirstHPPP] = useState(true);
+
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem("darkMode", JSON.stringify(darkMode));
+  }, [darkMode]);
+
+  useEffect(() => {
+    // Filtrar entries por búsqueda y semana
+    let filtered = entries;
+
+    if (searchTerm) {
+      filtered = filtered.filter(e =>
+        e.name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    if (selectedWeek !== "all") {
+      filtered = filtered.filter(e => e.week === selectedWeek);
+    }
+
+    setFilteredEntries(filtered);
+  }, [entries, searchTerm, selectedWeek]);
+
+  useEffect(() => {
+    // Keyboard shortcuts
+    function handleKeyPress(e: KeyboardEvent) {
+      // Ctrl/Cmd + Enter para enviar formulario
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && view === "form") {
+        handleSubmit();
+      }
+      // Esc para limpiar formulario
+      if (e.key === "Escape" && view === "form") {
+        clearForm();
+      }
+      // Ctrl/Cmd + D para toggle dark mode
+      if ((e.ctrlKey || e.metaKey) && e.key === "d") {
+        e.preventDefault();
+        setDarkMode((d: boolean) => !d);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyPress);
+    return () => window.removeEventListener("keydown", handleKeyPress);
+  }, [view, form]);
 
   async function loadEntries() {
     setLoading(true);
     setError("");
     try {
-      const data = await sbFetch("hppp_entries?order=created_at.desc&limit=50");
+      const data = await sbFetch("hppp_entries?order=created_at.desc&limit=100");
       setEntries(data);
+      if (data.length > 0) {
+        setIsFirstHPPP(false);
+      }
     } catch (err) {
       setError(`No se pudieron cargar los datos. ${err instanceof Error ? err.message : "Verificá tu conexión a Supabase."}`);
+      showToast("Error al cargar datos", "error");
     }
     setLoading(false);
   }
@@ -341,8 +601,27 @@ export default function App() {
     if (view === "dashboard") loadEntries();
   }, [view]);
 
+  function showToast(message: string, type: Toast["type"]) {
+    const id = Date.now();
+    setToasts((prev: Toast[]) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev: Toast[]) => prev.filter(t => t.id !== id));
+    }, 4000);
+  }
+
+  function clearForm() {
+    setForm({ name: "", highlights: "", progress: "", problems: "", plans: "" });
+    nameInputRef.current?.focus();
+  }
+
   async function handleSubmit() {
-    if (!form.name.trim()) return;
+    if (!form.name.trim()) {
+      setShake(true);
+      setTimeout(() => setShake(false), 500);
+      showToast("Por favor ingresá tu nombre", "error");
+      return;
+    }
+
     setSubmitting(true);
     setError("");
     try {
@@ -355,11 +634,29 @@ export default function App() {
           date: new Date().toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" }),
         }),
       });
+
+      // Confetti si es el primer HPPP
+      if (isFirstHPPP) {
+        confetti({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+        setIsFirstHPPP(false);
+      }
+
       setForm({ name: "", highlights: "", progress: "", problems: "", plans: "" });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
+      showToast("HPPP guardado exitosamente! 🎉", "success");
+
+      // Mostrar botón para ir al dashboard
+      setTimeout(() => {
+        if (confirm("¿Querés ver el dashboard del equipo?")) {
+          setView("dashboard");
+        }
+      }, 1000);
     } catch {
       setError("Error al guardar. Intentá de nuevo.");
+      showToast("Error al guardar HPPP", "error");
     }
     setSubmitting(false);
   }
@@ -368,15 +665,31 @@ export default function App() {
     try {
       await sbFetch(`hppp_entries?id=eq.${id}`, { method: "DELETE", prefer: "return=minimal" });
       setEntries(prev => prev.filter(e => e.id !== id));
+      showToast("HPPP eliminado", "success");
     } catch {
       setError("No se pudo eliminar.");
+      showToast("Error al eliminar", "error");
     }
   }
 
-  const hasBlockers = entries.filter(e => e.problems?.trim());
+  const hasBlockers = filteredEntries.filter(e => e.problems?.trim());
+  const uniqueWeeks = Array.from(new Set(entries.map(e => e.week)));
+
+  const stats = {
+    total: entries.length,
+    blockers: entries.filter(e => e.problems?.trim()).length,
+    withHighlights: entries.filter(e => e.highlights?.trim()).length,
+    withPlans: entries.filter(e => e.plans?.trim()).length
+  };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#020817", fontFamily: "'Space Mono', monospace", paddingBottom: 60 }}>
+    <div style={{
+      minHeight: "100vh",
+      background: darkMode ? "#020817" : "#f8fafc",
+      fontFamily: "'Space Mono', monospace",
+      paddingBottom: 60,
+      transition: "background 0.3s ease"
+    }}>
       <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
       <style>{`
         @keyframes fadeIn {
@@ -408,6 +721,26 @@ export default function App() {
           }
         }
 
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+          20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+
+        @keyframes slideInRight {
+          from {
+            transform: translateX(100%);
+          }
+          to {
+            transform: translateX(0);
+          }
+        }
+
+        @keyframes blink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0; }
+        }
+
         @media (max-width: 768px) {
           #root {
             padding: 0 12px;
@@ -415,9 +748,11 @@ export default function App() {
         }
       `}</style>
 
+      <ToastContainer toasts={toasts} onDismiss={(id) => setToasts((prev: Toast[]) => prev.filter(t => t.id !== id))} />
+
       <div style={{
-        background: "linear-gradient(180deg, #0a0f1e 0%, #020817 100%)",
-        borderBottom: "1px solid #1e293b",
+        background: darkMode ? "linear-gradient(180deg, #0a0f1e 0%, #020817 100%)" : "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+        borderBottom: darkMode ? "1px solid #1e293b" : "1px solid #e2e8f0",
         padding: "28px 24px 24px"
       }}>
         <div style={{ maxWidth: 780, margin: "0 auto" }}>
@@ -430,7 +765,7 @@ export default function App() {
           }}>
             <div>
               <div style={{
-                color: "#6366f1",
+                color: darkMode ? "#6366f1" : "#0ea5e9",
                 fontSize: 11,
                 letterSpacing: 3,
                 marginBottom: 6,
@@ -439,7 +774,7 @@ export default function App() {
                 TEAM STATUS
               </div>
               <div style={{
-                color: "#f1f5f9",
+                color: darkMode ? "#f1f5f9" : "#0f172a",
                 fontFamily: "'Crimson Pro', serif",
                 fontSize: "clamp(24px, 5vw, 34px)",
                 fontWeight: 600,
@@ -448,42 +783,62 @@ export default function App() {
                 HPPP Tracker
               </div>
               <div style={{
-                color: "#475569",
+                color: darkMode ? "#475569" : "#64748b",
                 fontSize: 12,
                 marginTop: 6
               }}>
-                {getWeekLabel()}
+                {getWeekLabel()} · {stats.total} HPPPs
               </div>
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <button
+                onClick={() => setDarkMode((d: boolean) => !d)}
+                style={{
+                  background: "transparent",
+                  border: darkMode ? "1px solid #334155" : "1px solid #cbd5e1",
+                  color: darkMode ? "#94a3b8" : "#64748b",
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                  cursor: "pointer",
+                  fontFamily: "'Space Mono', monospace",
+                  fontSize: 16,
+                  transition: "all 0.2s ease",
+                  transform: "scale(1)"
+                }}
+                onMouseEnter={e => e.currentTarget.style.transform = "scale(1.05)"}
+                onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
+                title="Toggle Dark Mode (Ctrl/Cmd+D)"
+              >
+                {darkMode ? "🌙" : "☀️"}
+              </button>
               {(["form", "dashboard"] as const).map(v => (
                 <button
                   key={v}
                   onClick={() => setView(v)}
                   style={{
-                    background: view === v ? "linear-gradient(135deg, #6366f1, #8b5cf6)" : "transparent",
-                    border: `1px solid ${view === v ? "#6366f1" : "#334155"}`,
-                    color: view === v ? "white" : "#94a3b8",
+                    background: view === v ? (darkMode ? "linear-gradient(135deg, #6366f1, #8b5cf6)" : "linear-gradient(135deg, #0ea5e9, #06b6d4)") : "transparent",
+                    border: view === v ? (darkMode ? "1px solid #6366f1" : "1px solid #0ea5e9") : (darkMode ? "1px solid #334155" : "1px solid #cbd5e1"),
+                    color: view === v ? "white" : (darkMode ? "#94a3b8" : "#64748b"),
                     borderRadius: 8,
                     padding: "10px 20px",
                     cursor: "pointer",
                     fontFamily: "'Space Mono', monospace",
                     fontSize: 11,
                     transition: "all 0.2s ease",
-                    boxShadow: view === v ? "0 2px 8px rgba(99, 102, 241, 0.3)" : "none",
+                    boxShadow: view === v ? (darkMode ? "0 2px 8px rgba(99, 102, 241, 0.3)" : "0 2px 8px rgba(14, 165, 233, 0.3)") : "none",
                     transform: "scale(1)"
                   }}
                   onMouseEnter={e => {
                     if (view !== v) {
-                      e.currentTarget.style.borderColor = "#6366f1";
-                      e.currentTarget.style.color = "#a5b4fc";
+                      e.currentTarget.style.borderColor = darkMode ? "#6366f1" : "#0ea5e9";
+                      e.currentTarget.style.color = darkMode ? "#a5b4fc" : "#38bdf8";
                     }
                     e.currentTarget.style.transform = "scale(1.05)";
                   }}
                   onMouseLeave={e => {
                     if (view !== v) {
-                      e.currentTarget.style.borderColor = "#334155";
-                      e.currentTarget.style.color = "#94a3b8";
+                      e.currentTarget.style.borderColor = darkMode ? "#334155" : "#cbd5e1";
+                      e.currentTarget.style.color = darkMode ? "#94a3b8" : "#64748b";
                     }
                     e.currentTarget.style.transform = "scale(1)";
                   }}
@@ -499,12 +854,12 @@ export default function App() {
       <div style={{ maxWidth: 780, margin: "0 auto", padding: "32px 24px 0" }}>
         {error && (
           <div style={{
-            background: "rgba(239,68,68,0.1)",
-            border: "1px solid rgba(239,68,68,0.3)",
+            background: darkMode ? "rgba(239,68,68,0.1)" : "rgba(239,68,68,0.05)",
+            border: darkMode ? "1px solid rgba(239,68,68,0.3)" : "1px solid rgba(239,68,68,0.2)",
             borderRadius: 10,
             padding: "14px 18px",
             marginBottom: 20,
-            color: "#fca5a5",
+            color: darkMode ? "#fca5a5" : "#dc2626",
             fontSize: 13,
             display: "flex",
             alignItems: "start",
@@ -513,7 +868,7 @@ export default function App() {
           }}>
             <span style={{ fontSize: 18 }}>⚠️</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, marginBottom: 4, color: "#f87171" }}>Error</div>
+              <div style={{ fontWeight: 700, marginBottom: 4, color: darkMode ? "#f87171" : "#dc2626" }}>Error</div>
               <div>{error}</div>
             </div>
             <button
@@ -521,7 +876,7 @@ export default function App() {
               style={{
                 background: "transparent",
                 border: "none",
-                color: "#fca5a5",
+                color: darkMode ? "#fca5a5" : "#dc2626",
                 cursor: "pointer",
                 fontSize: 18,
                 padding: 0,
@@ -535,19 +890,20 @@ export default function App() {
 
         {view === "form" && (
           <div>
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ color: "#94a3b8", fontSize: 11, letterSpacing: 2, display: "block", marginBottom: 8 }}>TU NOMBRE</label>
+            <div style={{ marginBottom: 24, animation: shake ? "shake 0.5s" : "none" }}>
+              <label style={{ color: darkMode ? "#94a3b8" : "#64748b", fontSize: 11, letterSpacing: 2, display: "block", marginBottom: 8 }}>TU NOMBRE</label>
               <input
+                ref={nameInputRef}
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                 placeholder="ej. Martina López"
                 style={{
                   width: "100%",
-                  background: "#0f172a",
-                  border: "1px solid #334155",
+                  background: darkMode ? "#0f172a" : "#ffffff",
+                  border: darkMode ? "1px solid #334155" : "1px solid #cbd5e1",
                   borderRadius: 10,
                   padding: "12px 16px",
-                  color: "#f1f5f9",
+                  color: darkMode ? "#f1f5f9" : "#0f172a",
                   fontFamily: "'Crimson Pro', serif",
                   fontSize: 16,
                   outline: "none",
@@ -555,11 +911,11 @@ export default function App() {
                   transition: "all 0.2s ease"
                 }}
                 onFocus={e => {
-                  e.currentTarget.style.borderColor = "#6366f1";
-                  e.currentTarget.style.boxShadow = "0 0 0 3px rgba(99, 102, 241, 0.1)";
+                  e.currentTarget.style.borderColor = darkMode ? "#6366f1" : "#0ea5e9";
+                  e.currentTarget.style.boxShadow = darkMode ? "0 0 0 3px rgba(99, 102, 241, 0.1)" : "0 0 0 3px rgba(14, 165, 233, 0.1)";
                 }}
                 onBlur={e => {
-                  e.currentTarget.style.borderColor = "#334155";
+                  e.currentTarget.style.borderColor = darkMode ? "#334155" : "#cbd5e1";
                   e.currentTarget.style.boxShadow = "none";
                 }}
               />
@@ -573,8 +929,8 @@ export default function App() {
                 <div
                   key={s.key}
                   style={{
-                    background: "#0f172a",
-                    border: "1px solid #1e293b",
+                    background: darkMode ? "#0f172a" : "#ffffff",
+                    border: darkMode ? "1px solid #1e293b" : "1px solid #e2e8f0",
                     borderTop: `3px solid ${s.color}`,
                     borderRadius: 12,
                     padding: 20,
@@ -585,14 +941,14 @@ export default function App() {
                     e.currentTarget.style.boxShadow = `0 4px 16px ${s.color}20`;
                   }}
                   onMouseLeave={e => {
-                    e.currentTarget.style.borderColor = "#1e293b";
+                    e.currentTarget.style.borderColor = darkMode ? "#1e293b" : "#e2e8f0";
                     e.currentTarget.style.boxShadow = "none";
                   }}
                 >
                   <div style={{ color: s.color, fontSize: 11, letterSpacing: 2, marginBottom: 4 }}>
                     {s.emoji} {s.label.toUpperCase()}
                   </div>
-                  <div style={{ color: "#475569", fontSize: 12, marginBottom: 10, fontFamily: "'Crimson Pro', serif" }}>
+                  <div style={{ color: darkMode ? "#475569" : "#64748b", fontSize: 12, marginBottom: 10, fontFamily: "'Crimson Pro', serif" }}>
                     {s.desc}
                   </div>
                   <textarea
@@ -602,11 +958,11 @@ export default function App() {
                     rows={4}
                     style={{
                       width: "100%",
-                      background: "#1e293b",
-                      border: "1px solid #334155",
+                      background: darkMode ? "#1e293b" : "#f8fafc",
+                      border: darkMode ? "1px solid #334155" : "1px solid #cbd5e1",
                       borderRadius: 8,
                       padding: "10px 12px",
-                      color: "#cbd5e1",
+                      color: darkMode ? "#cbd5e1" : "#334155",
                       fontFamily: "'Crimson Pro', serif",
                       fontSize: 15,
                       lineHeight: 1.5,
@@ -620,7 +976,7 @@ export default function App() {
                       e.currentTarget.style.boxShadow = `0 0 0 3px ${s.color}20`;
                     }}
                     onBlur={e => {
-                      e.currentTarget.style.borderColor = "#334155";
+                      e.currentTarget.style.borderColor = darkMode ? "#334155" : "#cbd5e1";
                       e.currentTarget.style.boxShadow = "none";
                     }}
                   />
@@ -632,7 +988,7 @@ export default function App() {
                 onClick={handleSubmit}
                 disabled={!form.name.trim() || submitting}
                 style={{
-                  background: form.name.trim() && !submitting ? "linear-gradient(135deg, #6366f1, #06b6d4)" : "#1e293b",
+                  background: form.name.trim() && !submitting ? (darkMode ? "linear-gradient(135deg, #6366f1, #06b6d4)" : "linear-gradient(135deg, #0ea5e9, #06b6d4)") : (darkMode ? "#1e293b" : "#e2e8f0"),
                   color: "white",
                   border: "none",
                   borderRadius: 10,
@@ -643,102 +999,214 @@ export default function App() {
                   fontWeight: 700,
                   letterSpacing: 1,
                   transition: "all 0.2s ease",
-                  boxShadow: form.name.trim() ? "0 4px 16px rgba(99, 102, 241, 0.3)" : "none",
+                  boxShadow: form.name.trim() ? (darkMode ? "0 4px 16px rgba(99, 102, 241, 0.3)" : "0 4px 16px rgba(14, 165, 233, 0.3)") : "none",
                   transform: "scale(1)",
                   opacity: !form.name.trim() || submitting ? 0.5 : 1
                 }}
                 onMouseEnter={e => {
                   if (form.name.trim() && !submitting) {
                     e.currentTarget.style.transform = "scale(1.05)";
-                    e.currentTarget.style.boxShadow = "0 6px 20px rgba(99, 102, 241, 0.4)";
+                    e.currentTarget.style.boxShadow = darkMode ? "0 6px 20px rgba(99, 102, 241, 0.4)" : "0 6px 20px rgba(14, 165, 233, 0.4)";
                   }
                 }}
                 onMouseLeave={e => {
                   e.currentTarget.style.transform = "scale(1)";
-                  e.currentTarget.style.boxShadow = form.name.trim() ? "0 4px 16px rgba(99, 102, 241, 0.3)" : "none";
+                  e.currentTarget.style.boxShadow = form.name.trim() ? (darkMode ? "0 4px 16px rgba(99, 102, 241, 0.3)" : "0 4px 16px rgba(14, 165, 233, 0.3)") : "none";
                 }}
               >
-                {submitting ? "⏳ Guardando..." : "✨ Enviar HPPP →"}
+                {submitting ? "⏳ Guardando..." : "✨ Enviar HPPP (Ctrl+Enter)"}
               </button>
-              {saved && (
-                <div style={{
-                  color: "#10b981",
-                  fontSize: 12,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  animation: "fadeIn 0.3s ease",
-                  background: "rgba(16, 185, 129, 0.1)",
-                  padding: "8px 12px",
-                  borderRadius: 6,
-                  border: "1px solid rgba(16, 185, 129, 0.3)"
-                }}>
-                  <span style={{ fontSize: 16 }}>✓</span>
-                  <span>Guardado en la base de datos</span>
-                </div>
-              )}
+              <button
+                onClick={clearForm}
+                style={{
+                  background: "transparent",
+                  border: darkMode ? "1px solid #334155" : "1px solid #cbd5e1",
+                  color: darkMode ? "#94a3b8" : "#64748b",
+                  borderRadius: 10,
+                  padding: "14px 24px",
+                  cursor: "pointer",
+                  fontFamily: "'Space Mono', monospace",
+                  fontSize: 13,
+                  transition: "all 0.2s ease"
+                }}
+                onMouseEnter={e => e.currentTarget.style.transform = "scale(1.05)"}
+                onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
+              >
+                🗑️ Limpiar (Esc)
+              </button>
             </div>
           </div>
         )}
 
         {view === "dashboard" && (
           <div>
-            {loading ? (
-              <div style={{ textAlign: "center", padding: "60px 0", color: "#475569" }}>
-                <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-                <div style={{ fontFamily: "'Crimson Pro', serif", fontSize: 18 }}>Cargando HPPPs del equipo...</div>
+            {/* Stats y filtros */}
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+              gap: 12,
+              marginBottom: 24
+            }}>
+              <div style={{
+                background: darkMode ? "#0f172a" : "#ffffff",
+                border: darkMode ? "1px solid #1e293b" : "1px solid #e2e8f0",
+                borderRadius: 10,
+                padding: 16,
+                textAlign: "center"
+              }}>
+                <div style={{ fontSize: 24, marginBottom: 4 }}>📊</div>
+                <div style={{ color: darkMode ? "#6366f1" : "#0ea5e9", fontSize: 20, fontWeight: 700 }}>{stats.total}</div>
+                <div style={{ color: darkMode ? "#64748b" : "#94a3b8", fontSize: 11 }}>Total HPPPs</div>
               </div>
+              <div style={{
+                background: darkMode ? "#0f172a" : "#ffffff",
+                border: darkMode ? "1px solid #1e293b" : "1px solid #e2e8f0",
+                borderRadius: 10,
+                padding: 16,
+                textAlign: "center"
+              }}>
+                <div style={{ fontSize: 24, marginBottom: 4 }}>🚧</div>
+                <div style={{ color: "#EF4444", fontSize: 20, fontWeight: 700 }}>{stats.blockers}</div>
+                <div style={{ color: darkMode ? "#64748b" : "#94a3b8", fontSize: 11 }}>Con Blockers</div>
+              </div>
+              <div style={{
+                background: darkMode ? "#0f172a" : "#ffffff",
+                border: darkMode ? "1px solid #1e293b" : "1px solid #e2e8f0",
+                borderRadius: 10,
+                padding: 16,
+                textAlign: "center"
+              }}>
+                <div style={{ fontSize: 24, marginBottom: 4 }}>⚡</div>
+                <div style={{ color: "#F59E0B", fontSize: 20, fontWeight: 700 }}>{stats.withHighlights}</div>
+                <div style={{ color: darkMode ? "#64748b" : "#94a3b8", fontSize: 11 }}>Con Highlights</div>
+              </div>
+              <div style={{
+                background: darkMode ? "#0f172a" : "#ffffff",
+                border: darkMode ? "1px solid #1e293b" : "1px solid #e2e8f0",
+                borderRadius: 10,
+                padding: 16,
+                textAlign: "center"
+              }}>
+                <div style={{ fontSize: 24, marginBottom: 4 }}>🗓️</div>
+                <div style={{ color: "#6366F1", fontSize: 20, fontWeight: 700 }}>{stats.withPlans}</div>
+                <div style={{ color: darkMode ? "#64748b" : "#94a3b8", fontSize: 11 }}>Con Planes</div>
+              </div>
+            </div>
+
+            {/* Filtros */}
+            <div style={{
+              display: "flex",
+              gap: 12,
+              marginBottom: 24,
+              flexWrap: "wrap"
+            }}>
+              <input
+                type="text"
+                placeholder="🔍 Buscar por nombre..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                style={{
+                  flex: 1,
+                  minWidth: 200,
+                  background: darkMode ? "#0f172a" : "#ffffff",
+                  border: darkMode ? "1px solid #334155" : "1px solid #cbd5e1",
+                  borderRadius: 8,
+                  padding: "10px 16px",
+                  color: darkMode ? "#f1f5f9" : "#0f172a",
+                  fontFamily: "'Space Mono', monospace",
+                  fontSize: 13,
+                  outline: "none",
+                  transition: "all 0.2s ease"
+                }}
+                onFocus={e => {
+                  e.currentTarget.style.borderColor = darkMode ? "#6366f1" : "#0ea5e9";
+                  e.currentTarget.style.boxShadow = darkMode ? "0 0 0 3px rgba(99, 102, 241, 0.1)" : "0 0 0 3px rgba(14, 165, 233, 0.1)";
+                }}
+                onBlur={e => {
+                  e.currentTarget.style.borderColor = darkMode ? "#334155" : "#cbd5e1";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+              />
+              <select
+                value={selectedWeek}
+                onChange={e => setSelectedWeek(e.target.value)}
+                style={{
+                  background: darkMode ? "#0f172a" : "#ffffff",
+                  border: darkMode ? "1px solid #334155" : "1px solid #cbd5e1",
+                  borderRadius: 8,
+                  padding: "10px 16px",
+                  color: darkMode ? "#f1f5f9" : "#0f172a",
+                  fontFamily: "'Space Mono', monospace",
+                  fontSize: 13,
+                  outline: "none",
+                  cursor: "pointer"
+                }}
+              >
+                <option value="all">📅 Todas las semanas</option>
+                {uniqueWeeks.map(week => (
+                  <option key={week} value={week}>{week}</option>
+                ))}
+              </select>
+            </div>
+
+            {loading ? (
+              <LoadingSkeleton />
             ) : (
               <>
                 {hasBlockers.length > 0 && (
                   <div style={{
-                    background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)",
-                    borderRadius: 12, padding: "14px 20px", marginBottom: 24,
-                    display: "flex", alignItems: "center", gap: 12
+                    background: darkMode ? "rgba(239,68,68,0.08)" : "rgba(239,68,68,0.05)",
+                    border: darkMode ? "1px solid rgba(239,68,68,0.3)" : "1px solid rgba(239,68,68,0.2)",
+                    borderRadius: 12,
+                    padding: "14px 20px",
+                    marginBottom: 24,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12
                   }}>
                     <span style={{ fontSize: 20 }}>🚧</span>
                     <div>
-                      <span style={{ color: "#fca5a5", fontSize: 12, letterSpacing: 1 }}>BLOCKERS ACTIVOS — </span>
-                      <span style={{ color: "#f87171", fontFamily: "'Crimson Pro', serif", fontSize: 15 }}>
+                      <span style={{ color: darkMode ? "#fca5a5" : "#dc2626", fontSize: 12, letterSpacing: 1 }}>BLOCKERS ACTIVOS — </span>
+                      <span style={{ color: darkMode ? "#f87171" : "#dc2626", fontFamily: "'Crimson Pro', serif", fontSize: 15 }}>
                         {hasBlockers.map(e => e.name).join(", ")} {hasBlockers.length === 1 ? "tiene" : "tienen"} problemas reportados
                       </span>
                     </div>
                   </div>
                 )}
-                {entries.length === 0 ? (
+                {filteredEntries.length === 0 && entries.length > 0 ? (
+                  <div style={{
+                    textAlign: "center",
+                    padding: "60px 20px",
+                    color: darkMode ? "#334155" : "#94a3b8"
+                  }}>
+                    <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
+                    <div style={{ fontFamily: "'Crimson Pro', serif", fontSize: 20 }}>No se encontraron resultados</div>
+                    <div style={{ fontSize: 13, marginTop: 8 }}>Probá con otro término de búsqueda o semana</div>
+                  </div>
+                ) : filteredEntries.length === 0 ? (
                   <div style={{
                     textAlign: "center",
                     padding: "80px 20px",
-                    color: "#334155",
+                    color: darkMode ? "#334155" : "#94a3b8",
                     animation: "fadeIn 0.5s ease"
                   }}>
-                    <div style={{
-                      fontSize: 64,
-                      marginBottom: 20,
-                      opacity: 0.6
-                    }}>
-                      📭
-                    </div>
+                    <div style={{ fontSize: 64, marginBottom: 20, opacity: 0.6 }}>📭</div>
                     <div style={{
                       fontFamily: "'Crimson Pro', serif",
                       fontSize: 24,
-                      color: "#64748b",
+                      color: darkMode ? "#64748b" : "#64748b",
                       marginBottom: 12,
                       fontWeight: 600
                     }}>
                       Todavía no hay HPPPs cargados
                     </div>
-                    <div style={{
-                      fontSize: 14,
-                      color: "#475569",
-                      marginBottom: 24
-                    }}>
+                    <div style={{ fontSize: 14, color: darkMode ? "#475569" : "#64748b", marginBottom: 24 }}>
                       Compartí el link al equipo para que carguen el suyo
                     </div>
                     <button
                       onClick={() => setView("form")}
                       style={{
-                        background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                        background: darkMode ? "linear-gradient(135deg, #6366f1, #8b5cf6)" : "linear-gradient(135deg, #0ea5e9, #06b6d4)",
                         color: "white",
                         border: "none",
                         borderRadius: 8,
@@ -747,24 +1215,24 @@ export default function App() {
                         fontSize: 12,
                         cursor: "pointer",
                         transition: "all 0.2s ease",
-                        boxShadow: "0 4px 16px rgba(99, 102, 241, 0.3)"
+                        boxShadow: darkMode ? "0 4px 16px rgba(99, 102, 241, 0.3)" : "0 4px 16px rgba(14, 165, 233, 0.3)"
                       }}
                       onMouseEnter={e => {
                         e.currentTarget.style.transform = "scale(1.05)";
-                        e.currentTarget.style.boxShadow = "0 6px 20px rgba(99, 102, 241, 0.4)";
+                        e.currentTarget.style.boxShadow = darkMode ? "0 6px 20px rgba(99, 102, 241, 0.4)" : "0 6px 20px rgba(14, 165, 233, 0.4)";
                       }}
                       onMouseLeave={e => {
                         e.currentTarget.style.transform = "scale(1)";
-                        e.currentTarget.style.boxShadow = "0 4px 16px rgba(99, 102, 241, 0.3)";
+                        e.currentTarget.style.boxShadow = darkMode ? "0 4px 16px rgba(99, 102, 241, 0.3)" : "0 4px 16px rgba(14, 165, 233, 0.3)";
                       }}
                     >
                       ✨ Cargar el primero
                     </button>
                   </div>
                 ) : (
-                  entries.map(e => <EntryCard key={e.id} entry={e} onDelete={handleDelete} />)
+                  filteredEntries.map(e => <EntryCard key={e.id} entry={e} onDelete={handleDelete} darkMode={darkMode} />)
                 )}
-                <AIInsights entries={entries} />
+                {entries.length > 0 && <AIInsights entries={filteredEntries} darkMode={darkMode} />}
               </>
             )}
           </div>
