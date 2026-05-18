@@ -553,7 +553,7 @@ function AIInsights({ entries, darkMode }: { entries: Entry[], darkMode: boolean
   );
 }
 
-function EntryCard({ entry, darkMode, onDeleteClick }: { entry: Entry; darkMode: boolean; onDeleteClick: (entry: Entry) => void }) {
+function EntryCard({ entry, darkMode, onDeleteClick, onEditClick }: { entry: Entry; darkMode: boolean; onDeleteClick: (entry: Entry) => void; onEditClick: (entry: Entry) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
@@ -611,6 +611,33 @@ function EntryCard({ entry, darkMode, onDeleteClick }: { entry: Entry; darkMode:
               🚧
             </span>
           )}
+          <button
+            onClick={e => { e.stopPropagation(); onEditClick(entry); }}
+            style={{
+              background: "transparent",
+              border: darkMode ? "1px solid #374151" : "1px solid #cbd5e1",
+              borderRadius: 6,
+              color: darkMode ? "#64748b" : "#94a3b8",
+              padding: "4px 10px",
+              cursor: "pointer",
+              fontFamily: "'Space Mono', monospace",
+              fontSize: 14,
+              transition: "all 0.2s ease"
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = darkMode ? "#6366f1" : "#0ea5e9";
+              e.currentTarget.style.color = "white";
+              e.currentTarget.style.borderColor = darkMode ? "#6366f1" : "#0ea5e9";
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = darkMode ? "#64748b" : "#94a3b8";
+              e.currentTarget.style.borderColor = darkMode ? "#374151" : "#cbd5e1";
+            }}
+            title="Editar HPPP"
+          >
+            ✏️
+          </button>
           <button
             onClick={e => { e.stopPropagation(); onDeleteClick(entry); }}
             style={{
@@ -712,6 +739,7 @@ export default function App() {
   const [shake, setShake] = useState(false);
   const [isFirstHPPP, setIsFirstHPPP] = useState(true);
   const [modal, setModal] = useState<Modal | null>(null);
+  const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
 
   const nameInputRef = useRef<HTMLInputElement>(null);
 
@@ -802,34 +830,57 @@ export default function App() {
     setSubmitting(true);
     setError("");
     try {
-      await sbFetch("hppp_entries", {
-        method: "POST",
-        prefer: "return=minimal",
-        body: JSON.stringify({
-          ...form,
-          week: getWeekLabel(),
-          date: new Date().toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" }),
-        }),
-      });
-
-      // Confetti si es el primer HPPP
-      if (isFirstHPPP) {
-        confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.6 }
+      if (editingEntry) {
+        // Actualizar entry existente
+        await sbFetch(`hppp_entries?id=eq.${editingEntry.id}`, {
+          method: "PATCH",
+          prefer: "return=minimal",
+          body: JSON.stringify({
+            ...form,
+            week: getWeekLabel(),
+            date: new Date().toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" }),
+          }),
         });
-        setIsFirstHPPP(false);
+        showToast("HPPP actualizado exitosamente! ✏️", "success", {
+          label: "Ver Dashboard",
+          onClick: () => setView("dashboard")
+        });
+        setEditingEntry(null);
+      } else {
+        // Crear nuevo entry
+        await sbFetch("hppp_entries", {
+          method: "POST",
+          prefer: "return=minimal",
+          body: JSON.stringify({
+            ...form,
+            week: getWeekLabel(),
+            date: new Date().toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" }),
+          }),
+        });
+
+        // Confetti si es el primer HPPP
+        if (isFirstHPPP) {
+          confetti({
+            particleCount: 100,
+            spread: 70,
+            origin: { y: 0.6 }
+          });
+          setIsFirstHPPP(false);
+        }
+
+        showToast("HPPP guardado exitosamente! 🎉", "success", {
+          label: "Ver Dashboard",
+          onClick: () => setView("dashboard")
+        });
       }
 
       setForm({ name: "", highlights: "", progress: "", problems: "", plans: "" });
-      showToast("HPPP guardado exitosamente! 🎉", "success", {
-        label: "Ver Dashboard",
-        onClick: () => setView("dashboard")
-      });
+
+      // Recargar entries automáticamente
+      await loadEntries();
     } catch {
-      setError("Error al guardar. Intentá de nuevo.");
-      showToast("Error al guardar HPPP", "error");
+      setError(editingEntry ? "Error al actualizar. Intentá de nuevo." : "Error al guardar. Intentá de nuevo.");
+      showToast(editingEntry ? "Error al actualizar HPPP" : "Error al guardar HPPP", "error");
     }
     setSubmitting(false);
   }
@@ -1075,6 +1126,66 @@ export default function App() {
 
         {view === "form" && (
           <div>
+            {editingEntry && (
+              <div style={{
+                background: darkMode ? "rgba(99, 102, 241, 0.1)" : "rgba(14, 165, 233, 0.1)",
+                border: darkMode ? "1px solid rgba(99, 102, 241, 0.3)" : "1px solid rgba(14, 165, 233, 0.3)",
+                borderRadius: 12,
+                padding: "14px 18px",
+                marginBottom: 24,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                animation: "fadeIn 0.3s ease"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 20 }}>✏️</span>
+                  <div>
+                    <div style={{
+                      color: darkMode ? "#a5b4fc" : "#0369a1",
+                      fontFamily: "'Space Mono', monospace",
+                      fontSize: 13,
+                      fontWeight: 600
+                    }}>
+                      Editando HPPP de {editingEntry.name}
+                    </div>
+                    <div style={{
+                      color: darkMode ? "#6366f1" : "#0ea5e9",
+                      fontSize: 11,
+                      marginTop: 2
+                    }}>
+                      Modificá los campos y guardá los cambios
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setEditingEntry(null);
+                    setForm({ name: "", highlights: "", progress: "", problems: "", plans: "" });
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: darkMode ? "1px solid #6366f1" : "1px solid #0ea5e9",
+                    color: darkMode ? "#a5b4fc" : "#0369a1",
+                    borderRadius: 6,
+                    padding: "6px 12px",
+                    cursor: "pointer",
+                    fontSize: 11,
+                    fontFamily: "'Space Mono', monospace",
+                    transition: "all 0.2s"
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = darkMode ? "rgba(99, 102, 241, 0.2)" : "rgba(14, 165, 233, 0.2)";
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = "transparent";
+                  }}
+                >
+                  Cancelar edición
+                </button>
+              </div>
+            )}
             <div style={{ marginBottom: 24, animation: shake ? "shake 0.5s" : "none" }}>
               <label style={{ color: darkMode ? "#94a3b8" : "#64748b", fontSize: 11, letterSpacing: 2, display: "block", marginBottom: 8 }}>TU NOMBRE</label>
               <input
@@ -1199,7 +1310,7 @@ export default function App() {
                   e.currentTarget.style.boxShadow = form.name.trim() ? (darkMode ? "0 4px 16px rgba(99, 102, 241, 0.3)" : "0 4px 16px rgba(14, 165, 233, 0.3)") : "none";
                 }}
               >
-                {submitting ? "⏳ Guardando..." : "✨ Enviar HPPP (Ctrl+Enter)"}
+                {submitting ? (editingEntry ? "⏳ Actualizando..." : "⏳ Guardando...") : (editingEntry ? "💾 Guardar cambios (Ctrl+Enter)" : "✨ Enviar HPPP (Ctrl+Enter)")}
               </button>
               <button
                 onClick={clearForm}
@@ -1419,6 +1530,20 @@ export default function App() {
                     key={e.id}
                     entry={e}
                     darkMode={darkMode}
+                    onEditClick={(entry) => {
+                      setEditingEntry(entry);
+                      setForm({
+                        name: entry.name,
+                        highlights: entry.highlights,
+                        progress: entry.progress,
+                        problems: entry.problems,
+                        plans: entry.plans
+                      });
+                      setView("form");
+                      setTimeout(() => {
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }, 100);
+                    }}
                     onDeleteClick={(entry) => {
                       setModal({
                         title: "Eliminar HPPP",
