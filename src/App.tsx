@@ -806,6 +806,11 @@ export default function App() {
     if (view === "dashboard") loadEntries();
   }, [view]);
 
+  // Cargar entries al iniciar la app para que el contador siempre esté actualizado
+  useEffect(() => {
+    loadEntries();
+  }, []);
+
   function showToast(message: string, type: Toast["type"], action?: Toast["action"]) {
     const id = Date.now();
     setToasts((prev: Toast[]) => [...prev, { id, message, type, action }]);
