@@ -11,6 +11,21 @@ const SECTIONS = [
   { key: "plans",      label: "Plans",      emoji: "🗓️", color: "#6366F1", desc: "¿Qué vas a hacer la próxima semana?" },
 ];
 
+const TEAM_MEMBERS = [
+  "Andres Rodriguez",
+  "Camila Becerra",
+  "Emmanuel Casa",
+  "German Giraldo",
+  "Javier Sarasua",
+  "Laura Pinilla",
+  "Luis Garcia",
+  "Martha Torres",
+  "Mateo Rodriguez",
+  "Naomi Leiva",
+  "Sebastian Gonzalez",
+  "Veronica Torricos"
+];
+
 interface Entry {
   id: string;
   name: string;
@@ -736,6 +751,7 @@ export default function App() {
   });
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedWeek, setSelectedWeek] = useState<string>("all");
+  const [selectedPerson, setSelectedPerson] = useState<string>("all");
   const [shake, setShake] = useState(false);
   const [isFirstHPPP, setIsFirstHPPP] = useState(true);
   const [modal, setModal] = useState<Modal | null>(null);
@@ -748,7 +764,7 @@ export default function App() {
   }, [darkMode]);
 
   useEffect(() => {
-    // Filtrar entries por búsqueda y semana
+    // Filtrar entries por búsqueda, semana y persona
     let filtered = entries;
 
     if (searchTerm) {
@@ -761,8 +777,12 @@ export default function App() {
       filtered = filtered.filter(e => e.week === selectedWeek);
     }
 
+    if (selectedPerson !== "all") {
+      filtered = filtered.filter(e => e.name === selectedPerson);
+    }
+
     setFilteredEntries(filtered);
-  }, [entries, searchTerm, selectedWeek]);
+  }, [entries, searchTerm, selectedWeek, selectedPerson]);
 
   useEffect(() => {
     // Keyboard shortcuts
@@ -903,13 +923,48 @@ export default function App() {
 
   const hasBlockers = filteredEntries.filter(e => e.problems?.trim());
   const uniqueWeeks = Array.from(new Set(entries.map(e => e.week)));
+  const uniqueParticipants = Array.from(new Set(entries.map(e => e.name)));
 
   const stats = {
     total: entries.length,
     blockers: entries.filter(e => e.problems?.trim()).length,
     withHighlights: entries.filter(e => e.highlights?.trim()).length,
-    withPlans: entries.filter(e => e.plans?.trim()).length
+    withPlans: entries.filter(e => e.plans?.trim()).length,
+    participation: Math.round((uniqueParticipants.length / TEAM_MEMBERS.length) * 100)
   };
+
+  // Calcular quién falta completar el HPPP esta semana
+  const currentWeek = getWeekLabel();
+  const completedThisWeek = entries.filter(e => e.week === currentWeek).map(e => e.name);
+  const missingThisWeek = TEAM_MEMBERS.filter(member => !completedThisWeek.includes(member));
+
+  // Función para exportar a CSV
+  function exportToCSV() {
+    const headers = ["Nombre", "Semana", "Fecha", "Highlights", "Progress", "Problems", "Plans"];
+    const rows = entries.map(e => [
+      e.name,
+      e.week,
+      e.date,
+      e.highlights?.replace(/\n/g, " ") || "",
+      e.progress?.replace(/\n/g, " ") || "",
+      e.problems?.replace(/\n/g, " ") || "",
+      e.plans?.replace(/\n/g, " ") || ""
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `hppp-tracker-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("Datos exportados a CSV", "success");
+  }
 
   return (
     <div style={{
@@ -1028,7 +1083,7 @@ export default function App() {
                 fontSize: 12,
                 marginTop: 6
               }}>
-                {getWeekLabel()} · {stats.total} HPPPs
+                {getWeekLabel()} · {stats.total} HPPPs · {uniqueParticipants.length}/{TEAM_MEMBERS.length} del equipo ({stats.participation}%)
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -1193,11 +1248,9 @@ export default function App() {
             )}
             <div style={{ marginBottom: 24, animation: shake ? "shake 0.5s" : "none" }}>
               <label style={{ color: darkMode ? "#94a3b8" : "#64748b", fontSize: 11, letterSpacing: 2, display: "block", marginBottom: 8 }}>TU NOMBRE</label>
-              <input
-                ref={nameInputRef}
+              <select
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                placeholder="ej. Martina López"
                 style={{
                   width: "100%",
                   background: darkMode ? "#0f172a" : "#ffffff",
@@ -1209,7 +1262,8 @@ export default function App() {
                   fontSize: 16,
                   outline: "none",
                   boxSizing: "border-box",
-                  transition: "all 0.2s ease"
+                  transition: "all 0.2s ease",
+                  cursor: "pointer"
                 }}
                 onFocus={e => {
                   e.currentTarget.style.borderColor = darkMode ? "#6366f1" : "#0ea5e9";
@@ -1219,7 +1273,12 @@ export default function App() {
                   e.currentTarget.style.borderColor = darkMode ? "#334155" : "#cbd5e1";
                   e.currentTarget.style.boxShadow = "none";
                 }}
-              />
+              >
+                <option value="" disabled>Seleccioná tu nombre</option>
+                {TEAM_MEMBERS.map(member => (
+                  <option key={member} value={member}>{member}</option>
+                ))}
+              </select>
             </div>
             <div style={{
               display: "grid",
@@ -1342,6 +1401,35 @@ export default function App() {
         {view === "dashboard" && (
           <div>
             {/* Stats y filtros */}
+            {selectedPerson !== "all" && (
+              <div style={{
+                background: darkMode ? "rgba(99, 102, 241, 0.08)" : "rgba(99, 102, 241, 0.05)",
+                border: darkMode ? "1px solid rgba(99, 102, 241, 0.3)" : "1px solid rgba(99, 102, 241, 0.2)",
+                borderRadius: 12,
+                padding: "16px 20px",
+                marginBottom: 20,
+                animation: "fadeIn 0.3s ease"
+              }}>
+                <div style={{
+                  color: darkMode ? "#a5b4fc" : "#4f46e5",
+                  fontFamily: "'Space Mono', monospace",
+                  fontSize: 11,
+                  letterSpacing: 2,
+                  marginBottom: 8,
+                  fontWeight: 700
+                }}>
+                  HISTORIAL DE {selectedPerson.toUpperCase()}
+                </div>
+                <div style={{
+                  color: darkMode ? "#c7d2fe" : "#6366f1",
+                  fontFamily: "'Crimson Pro', serif",
+                  fontSize: 14
+                }}>
+                  {filteredEntries.length} HPPP{filteredEntries.length !== 1 ? "s" : ""} registrado{filteredEntries.length !== 1 ? "s" : ""}
+                  {filteredEntries.length > 0 && ` • ${filteredEntries.filter(e => e.problems?.trim()).length} con blockers`}
+                </div>
+              </div>
+            )}
             <div style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
@@ -1394,12 +1482,91 @@ export default function App() {
               </div>
             </div>
 
+            {/* Indicador de quién falta completar HPPP esta semana */}
+            {missingThisWeek.length > 0 && (
+              <div style={{
+                background: darkMode ? "rgba(245, 158, 11, 0.08)" : "rgba(245, 158, 11, 0.05)",
+                border: darkMode ? "1px solid rgba(245, 158, 11, 0.3)" : "1px solid rgba(245, 158, 11, 0.2)",
+                borderRadius: 12,
+                padding: "14px 20px",
+                marginBottom: 20,
+                animation: "fadeIn 0.3s ease"
+              }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                  <span style={{ fontSize: 20 }}>⏳</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{
+                      color: darkMode ? "#fbbf24" : "#d97706",
+                      fontFamily: "'Space Mono', monospace",
+                      fontSize: 11,
+                      letterSpacing: 2,
+                      marginBottom: 6,
+                      fontWeight: 700
+                    }}>
+                      PENDIENTES ESTA SEMANA ({missingThisWeek.length}/{TEAM_MEMBERS.length})
+                    </div>
+                    <div style={{
+                      color: darkMode ? "#fcd34d" : "#b45309",
+                      fontFamily: "'Crimson Pro', serif",
+                      fontSize: 15,
+                      lineHeight: 1.5
+                    }}>
+                      {missingThisWeek.length === TEAM_MEMBERS.length ? (
+                        "Nadie ha completado su HPPP esta semana todavía"
+                      ) : (
+                        <>
+                          Falta{missingThisWeek.length > 1 ? "n" : ""}: <strong>{missingThisWeek.join(", ")}</strong>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* HPPPs completados esta semana */}
+            {completedThisWeek.length > 0 && missingThisWeek.length < TEAM_MEMBERS.length && (
+              <div style={{
+                background: darkMode ? "rgba(16, 185, 129, 0.08)" : "rgba(16, 185, 129, 0.05)",
+                border: darkMode ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(16, 185, 129, 0.2)",
+                borderRadius: 12,
+                padding: "14px 20px",
+                marginBottom: 20,
+                animation: "fadeIn 0.3s ease"
+              }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                  <span style={{ fontSize: 20 }}>✅</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{
+                      color: darkMode ? "#34d399" : "#059669",
+                      fontFamily: "'Space Mono', monospace",
+                      fontSize: 11,
+                      letterSpacing: 2,
+                      marginBottom: 6,
+                      fontWeight: 700
+                    }}>
+                      COMPLETADOS ESTA SEMANA ({completedThisWeek.length}/{TEAM_MEMBERS.length})
+                    </div>
+                    <div style={{
+                      color: darkMode ? "#6ee7b7" : "#047857",
+                      fontFamily: "'Crimson Pro', serif",
+                      fontSize: 15,
+                      lineHeight: 1.5
+                    }}>
+                      {completedThisWeek.join(", ")}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Filtros */}
             <div style={{
               display: "flex",
               gap: 12,
               marginBottom: 24,
-              flexWrap: "wrap"
+              flexWrap: "wrap",
+              alignItems: "center"
             }}>
               <input
                 type="text"
@@ -1429,6 +1596,26 @@ export default function App() {
                 }}
               />
               <select
+                value={selectedPerson}
+                onChange={e => setSelectedPerson(e.target.value)}
+                style={{
+                  background: darkMode ? "#0f172a" : "#ffffff",
+                  border: darkMode ? "1px solid #334155" : "1px solid #cbd5e1",
+                  borderRadius: 8,
+                  padding: "10px 16px",
+                  color: darkMode ? "#f1f5f9" : "#0f172a",
+                  fontFamily: "'Space Mono', monospace",
+                  fontSize: 13,
+                  outline: "none",
+                  cursor: "pointer"
+                }}
+              >
+                <option value="all">👥 Todas las personas</option>
+                {TEAM_MEMBERS.map(member => (
+                  <option key={member} value={member}>{member}</option>
+                ))}
+              </select>
+              <select
                 value={selectedWeek}
                 onChange={e => setSelectedWeek(e.target.value)}
                 style={{
@@ -1448,6 +1635,68 @@ export default function App() {
                   <option key={week} value={week}>{week}</option>
                 ))}
               </select>
+              <button
+                onClick={exportToCSV}
+                disabled={entries.length === 0}
+                style={{
+                  background: entries.length === 0 ? (darkMode ? "#1e293b" : "#e2e8f0") : (darkMode ? "rgba(16, 185, 129, 0.15)" : "rgba(16, 185, 129, 0.1)"),
+                  border: entries.length === 0 ? (darkMode ? "1px solid #334155" : "1px solid #cbd5e1") : (darkMode ? "1px solid #10b981" : "1px solid #10b981"),
+                  color: entries.length === 0 ? (darkMode ? "#475569" : "#94a3b8") : (darkMode ? "#34d399" : "#059669"),
+                  borderRadius: 8,
+                  padding: "10px 16px",
+                  cursor: entries.length === 0 ? "not-allowed" : "pointer",
+                  fontFamily: "'Space Mono', monospace",
+                  fontSize: 13,
+                  transition: "all 0.2s ease",
+                  opacity: entries.length === 0 ? 0.5 : 1,
+                  whiteSpace: "nowrap"
+                }}
+                onMouseEnter={e => {
+                  if (entries.length > 0) {
+                    e.currentTarget.style.background = darkMode ? "rgba(16, 185, 129, 0.25)" : "rgba(16, 185, 129, 0.15)";
+                    e.currentTarget.style.transform = "scale(1.05)";
+                  }
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = entries.length === 0 ? (darkMode ? "#1e293b" : "#e2e8f0") : (darkMode ? "rgba(16, 185, 129, 0.15)" : "rgba(16, 185, 129, 0.1)");
+                  e.currentTarget.style.transform = "scale(1)";
+                }}
+                title="Exportar todos los datos a CSV"
+              >
+                📥 Exportar CSV
+              </button>
+              {(searchTerm || selectedPerson !== "all" || selectedWeek !== "all") && (
+                <button
+                  onClick={() => {
+                    setSearchTerm("");
+                    setSelectedPerson("all");
+                    setSelectedWeek("all");
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: darkMode ? "1px solid #334155" : "1px solid #cbd5e1",
+                    color: darkMode ? "#94a3b8" : "#64748b",
+                    borderRadius: 8,
+                    padding: "10px 16px",
+                    cursor: "pointer",
+                    fontFamily: "'Space Mono', monospace",
+                    fontSize: 13,
+                    transition: "all 0.2s ease",
+                    whiteSpace: "nowrap"
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = darkMode ? "#1e293b" : "#f8fafc";
+                    e.currentTarget.style.transform = "scale(1.05)";
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = "transparent";
+                    e.currentTarget.style.transform = "scale(1)";
+                  }}
+                  title="Limpiar todos los filtros"
+                >
+                  🔄 Limpiar filtros
+                </button>
+              )}
             </div>
 
             {loading ? (
