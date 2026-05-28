@@ -11,6 +11,7 @@ const SECTIONS = [
   { key: "plans",      label: "Plans",      emoji: "🗓️", color: "#6366F1", desc: "¿Qué vas a hacer la próxima semana?" },
 ];
 
+// Nombres normalizados (sin tildes, Title Case)
 const TEAM_MEMBERS = [
   "Andres Rodriguez",
   "Camila Becerra",
@@ -71,6 +72,18 @@ function getWeekLabel(date?: Date) {
   const start = new Date(now);
   start.setDate(now.getDate() - now.getDay() + 1);
   return `Semana del ${start.toLocaleDateString("es-AR", { day: "numeric", month: "short" })}`;
+}
+
+// Normaliza nombres: quita tildes, convierte a Title Case, trim espacios
+function normalizeName(name: string): string {
+  return name
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // Quita tildes/acentos
+    .toLowerCase()
+    .split(" ")
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 async function sbFetch(path: string, options: RequestInit & { prefer?: string } = {}) {
@@ -855,6 +868,9 @@ export default function App() {
     setSubmitting(true);
     setError("");
     try {
+      // Normalizar el nombre antes de guardar
+      const normalizedName = normalizeName(form.name);
+
       if (editingEntry) {
         // Actualizar entry existente
         await sbFetch(`hppp_entries?id=eq.${editingEntry.id}`, {
@@ -862,6 +878,7 @@ export default function App() {
           prefer: "return=minimal",
           body: JSON.stringify({
             ...form,
+            name: normalizedName,
             week: getWeekLabel(),
             date: new Date().toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" }),
           }),
@@ -878,6 +895,7 @@ export default function App() {
           prefer: "return=minimal",
           body: JSON.stringify({
             ...form,
+            name: normalizedName,
             week: getWeekLabel(),
             date: new Date().toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" }),
           }),
