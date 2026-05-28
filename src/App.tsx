@@ -941,6 +941,7 @@ export default function App() {
   }
 
   const hasBlockers = filteredEntries.filter(e => e.problems?.trim());
+  const uniqueBlockerNames = Array.from(new Set(hasBlockers.map(e => e.name)));
   const uniqueWeeks = Array.from(new Set(entries.map(e => e.week)));
   const uniqueParticipants = Array.from(new Set(entries.map(e => e.name)));
 
@@ -1744,7 +1745,7 @@ export default function App() {
                     <div>
                       <span style={{ color: darkMode ? "#fca5a5" : "#dc2626", fontSize: 12, letterSpacing: 1 }}>BLOCKERS ACTIVOS — </span>
                       <span style={{ color: darkMode ? "#f87171" : "#dc2626", fontFamily: "'Crimson Pro', serif", fontSize: 15 }}>
-                        {hasBlockers.map(e => e.name).join(", ")} {hasBlockers.length === 1 ? "tiene" : "tienen"} problemas reportados
+                        {uniqueBlockerNames.join(", ")} {uniqueBlockerNames.length === 1 ? "tiene" : "tienen"} problemas reportados
                       </span>
                     </div>
                   </div>
