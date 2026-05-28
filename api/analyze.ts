@@ -6,11 +6,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { summary } = req.body;
+  const { summary, language = 'es' } = req.body;
 
   if (!summary) {
     return res.status(400).json({ error: 'Summary is required' });
   }
+
+  // Definir prompts según idioma
+  const prompts = {
+    es: `Sos un lead de equipo. Analizá este HPPP semanal y generá un resumen ejecutivo breve en español (máx 150 palabras) con: principales logros del equipo, blockers críticos a resolver, y 2-3 recomendaciones accionables. Sé directo, sin preámbulos.\n\n${summary}`,
+    en: `You're a team lead. Analyze this weekly HPPP and generate a brief executive summary in English (max 150 words) with: main team achievements, critical blockers to resolve, and 2-3 actionable recommendations. Be direct, no preambles.\n\n${summary}`,
+    pt: `Você é um líder de equipe. Analise este HPPP semanal e gere um resumo executivo breve em português (máx 150 palavras) com: principais conquistas da equipe, bloqueios críticos a resolver, e 2-3 recomendações acionáveis. Seja direto, sem preâmbulos.\n\n${summary}`
+  };
+
+  const prompt = prompts[language as keyof typeof prompts] || prompts.es;
 
   const apiKey = process.env.GROQ_API_KEY;
 
@@ -31,7 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         temperature: 0.7,
         messages: [{
           role: 'user',
-          content: `Sos un lead de equipo. Analizá este HPPP semanal y generá un resumen ejecutivo breve en español (máx 150 palabras) con: principales logros del equipo, blockers críticos a resolver, y 2-3 recomendaciones accionables. Sé directo, sin preambles.\n\n${summary}`
+          content: prompt
         }]
       })
     });

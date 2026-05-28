@@ -376,7 +376,15 @@ function AIInsights({ entries, darkMode }: { entries: Entry[], darkMode: boolean
   const [loading, setLoading] = useState(false);
   const [typing, setTyping] = useState(false);
   const [rawInsight, setRawInsight] = useState("");
+  const [language, setLanguage] = useState(() => {
+    return localStorage.getItem("aiLanguage") || "es";
+  });
   const insightRef = useRef<HTMLDivElement>(null);
+
+  // Guardar preferencia de idioma
+  useEffect(() => {
+    localStorage.setItem("aiLanguage", language);
+  }, [language]);
 
   async function generateInsight() {
     if (!entries.length) return;
@@ -401,7 +409,7 @@ function AIInsights({ entries, darkMode }: { entries: Entry[], darkMode: boolean
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ summary })
+        body: JSON.stringify({ summary, language })
       });
 
       if (!res.ok) {
@@ -457,7 +465,30 @@ function AIInsights({ entries, darkMode }: { entries: Entry[], darkMode: boolean
             Análisis IA del equipo {loading && <span style={{ fontSize: 14 }}>⚡</span>}
           </span>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <select
+            value={language}
+            onChange={e => setLanguage(e.target.value)}
+            disabled={loading}
+            style={{
+              background: darkMode ? "rgba(99, 102, 241, 0.15)" : "rgba(14, 165, 233, 0.1)",
+              border: darkMode ? "1px solid #6366f1" : "1px solid #0ea5e9",
+              color: darkMode ? "#a5b4fc" : "#0369a1",
+              borderRadius: 6,
+              padding: "8px 12px",
+              fontFamily: "'Space Mono', monospace",
+              fontSize: 11,
+              cursor: loading ? "not-allowed" : "pointer",
+              outline: "none",
+              opacity: loading ? 0.5 : 1,
+              transition: "all 0.2s ease"
+            }}
+            title="Seleccionar idioma del resumen"
+          >
+            <option value="es">🇪🇸 Español</option>
+            <option value="en">🇺🇸 English</option>
+            <option value="pt">🇧🇷 Português</option>
+          </select>
           {insight && !loading && (
             <>
               <button onClick={copyToClipboard} style={{
