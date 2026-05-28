@@ -11,20 +11,21 @@ const SECTIONS = [
   { key: "plans",      label: "Plans",      emoji: "🗓️", color: "#6366F1", desc: "¿Qué vas a hacer la próxima semana?" },
 ];
 
-// Nombres normalizados (sin tildes, Title Case)
+// Nombres con tildes correctas para mostrar en el selector
+// Al guardar, se normalizarán automáticamente (sin tildes)
 const TEAM_MEMBERS = [
-  "Andres Rodriguez",
+  "Andrés Rodríguez",
   "Camila Becerra",
   "Emmanuel Casa",
-  "German Giraldo",
+  "Germán Giraldo",
   "Javier Sarasua",
   "Laura Pinilla",
-  "Luis Garcia",
+  "Luis García",
   "Martha Torres",
-  "Mateo Rodriguez",
+  "Mateo Rodríguez",
   "Naomi Leiva",
-  "Sebastian Gonzalez",
-  "Veronica Torricos"
+  "Sebastián González",
+  "Verónica Torricos"
 ];
 
 interface Entry {
@@ -953,8 +954,12 @@ export default function App() {
 
   // Calcular quién falta completar el HPPP esta semana
   const currentWeek = getWeekLabel();
-  const completedThisWeek = entries.filter(e => e.week === currentWeek).map(e => e.name);
-  const missingThisWeek = TEAM_MEMBERS.filter(member => !completedThisWeek.includes(member));
+  const completedThisWeekNormalized = entries
+    .filter(e => e.week === currentWeek)
+    .map(e => normalizeName(e.name));
+  const missingThisWeek = TEAM_MEMBERS.filter(
+    member => !completedThisWeekNormalized.includes(normalizeName(member))
+  );
 
   // Función para exportar a CSV
   function exportToCSV() {
@@ -1543,7 +1548,7 @@ export default function App() {
             )}
 
             {/* HPPPs completados esta semana */}
-            {completedThisWeek.length > 0 && missingThisWeek.length < TEAM_MEMBERS.length && (
+            {completedThisWeekNormalized.length > 0 && missingThisWeek.length < TEAM_MEMBERS.length && (
               <div style={{
                 background: darkMode ? "rgba(16, 185, 129, 0.08)" : "rgba(16, 185, 129, 0.05)",
                 border: darkMode ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(16, 185, 129, 0.2)",
@@ -1563,7 +1568,7 @@ export default function App() {
                       marginBottom: 6,
                       fontWeight: 700
                     }}>
-                      COMPLETADOS ESTA SEMANA ({completedThisWeek.length}/{TEAM_MEMBERS.length})
+                      COMPLETADOS ESTA SEMANA ({completedThisWeekNormalized.length}/{TEAM_MEMBERS.length})
                     </div>
                     <div style={{
                       color: darkMode ? "#6ee7b7" : "#047857",
@@ -1571,7 +1576,10 @@ export default function App() {
                       fontSize: 15,
                       lineHeight: 1.5
                     }}>
-                      {completedThisWeek.join(", ")}
+                      {entries
+                        .filter(e => e.week === currentWeek)
+                        .map(e => e.name)
+                        .join(", ")}
                     </div>
                   </div>
                 </div>
