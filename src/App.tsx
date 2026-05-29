@@ -399,9 +399,15 @@ function AIInsights({ entries, darkMode }: { entries: Entry[], darkMode: boolean
       insightRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }, 100);
 
-    const summary = entries.map(e =>
-      `${e.name}: Highlights: ${e.highlights} | Progress: ${e.progress} | Problems: ${e.problems} | Plans: ${e.plans}`
-    ).join("\n");
+    // Usar solo los entries que se están mostrando actualmente (filtrados)
+    // Si no hay filtros, usar todos los entries
+    const entriesToAnalyze = entries.length > 0 ? entries : entries;
+
+    const summary = entriesToAnalyze.map(e =>
+      `${e.name} (${e.week}):\n- Highlights: ${e.highlights || 'N/A'}\n- Progress: ${e.progress || 'N/A'}\n- Problems: ${e.problems || 'Ninguno'}\n- Plans: ${e.plans || 'N/A'}`
+    ).join("\n\n");
+
+    const totalPeople = new Set(entriesToAnalyze.map(e => e.name)).size;
 
     try {
       const res = await fetch("/api/analyze", {
@@ -409,7 +415,12 @@ function AIInsights({ entries, darkMode }: { entries: Entry[], darkMode: boolean
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ summary, language })
+        body: JSON.stringify({
+          summary,
+          language,
+          totalPeople,
+          totalEntries: entriesToAnalyze.length
+        })
       });
 
       if (!res.ok) {
@@ -551,6 +562,17 @@ function AIInsights({ entries, darkMode }: { entries: Entry[], darkMode: boolean
           </button>
         </div>
       </div>
+      {!loading && !insight && entries.length > 0 && (
+        <div style={{
+          color: darkMode ? "#6366f1" : "#0369a1",
+          fontFamily: "'Space Mono', monospace",
+          fontSize: 11,
+          padding: "12px 0",
+          opacity: 0.8
+        }}>
+          📊 Se analizarán {entries.length} HPPP{entries.length !== 1 ? 's' : ''} de {new Set(entries.map(e => e.name)).size} persona{new Set(entries.map(e => e.name)).size !== 1 ? 's' : ''}
+        </div>
+      )}
       {loading && (
         <div style={{
           color: darkMode ? "#c7d2fe" : "#0369a1",
