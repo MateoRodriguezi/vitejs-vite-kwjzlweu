@@ -6,7 +6,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { summary, language = 'es', totalPeople = 0, totalEntries = 0 } = req.body;
+  const { summary, language = 'es', totalPeople = 0, totalEntries = 0, teamLeaders = [] } = req.body;
 
   if (!summary) {
     return res.status(400).json({ error: 'Summary is required' });
@@ -15,9 +15,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Calcular límite de palabras dinámicamente (mínimo 200, máximo 500)
   const wordLimit = Math.min(500, Math.max(200, totalPeople * 40));
 
+  // Crear contexto sobre líderes si están presentes
+  const leaderContext = teamLeaders.length > 0
+    ? `\n\nCONTEXTO ADICIONAL: ${teamLeaders.join(' y ')} ${teamLeaders.length > 1 ? 'son los líderes' : 'es el líder'} del equipo. Esto es solo contexto para entender la dinámica, no necesitan reconocimiento especial en el resumen.`
+    : '';
+
   // Definir prompts según idioma
   const prompts = {
-    es: `Sos un lead de equipo analizando ${totalEntries} HPPP${totalEntries > 1 ? 's' : ''} de ${totalPeople} persona${totalPeople > 1 ? 's' : ''}.
+    es: `Sos un lead de equipo analizando ${totalEntries} HPPP${totalEntries > 1 ? 's' : ''} de ${totalPeople} persona${totalPeople > 1 ? 's' : ''}.${leaderContext}
 
 IMPORTANTE: Debés analizar e incluir información de TODAS las personas mencionadas abajo. No omitas a nadie.
 
@@ -33,7 +38,7 @@ Sé específico, menciona nombres cuando sea relevante, y asegurate de cubrir a 
 
 DATOS DEL EQUIPO:
 ${summary}`,
-    en: `You're a team lead analyzing ${totalEntries} HPPP${totalEntries > 1 ? 's' : ''} from ${totalPeople} person${totalPeople > 1 ? 's' : ''}.
+    en: `You're a team lead analyzing ${totalEntries} HPPP${totalEntries > 1 ? 's' : ''} from ${totalPeople} person${totalPeople > 1 ? 's' : ''}.${leaderContext.replace('son los líderes', 'are the team leaders').replace('es el líder', 'is the team leader').replace('Esto es solo contexto para entender la dinámica, no necesitan reconocimiento especial en el resumen', 'This is just context to understand team dynamics, they don\'t need special recognition in the summary')}
 
 IMPORTANT: You MUST analyze and include information from ALL people mentioned below. Don't omit anyone.
 
@@ -49,7 +54,7 @@ Be specific, mention names when relevant, and make sure to cover ALL people.
 
 TEAM DATA:
 ${summary}`,
-    pt: `Você é um líder de equipe analisando ${totalEntries} HPPP${totalEntries > 1 ? 's' : ''} de ${totalPeople} pessoa${totalPeople > 1 ? 's' : ''}.
+    pt: `Você é um líder de equipe analisando ${totalEntries} HPPP${totalEntries > 1 ? 's' : ''} de ${totalPeople} pessoa${totalPeople > 1 ? 's' : ''}.${leaderContext.replace('son los líderes', 'são os líderes').replace('es el líder', 'é o líder').replace('Esto es solo contexto para entender la dinámica, no necesitan reconocimiento especial en el resumen', 'Isso é apenas contexto para entender a dinâmica, eles não precisam de reconhecimento especial no resumo')}
 
 IMPORTANTE: Você DEVE analisar e incluir informações de TODAS as pessoas mencionadas abaixo. Não omita ninguém.
 

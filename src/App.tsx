@@ -409,6 +409,13 @@ function AIInsights({ entries, darkMode }: { entries: Entry[], darkMode: boolean
 
     const totalPeople = new Set(entriesToAnalyze.map(e => e.name)).size;
 
+    // Detectar si hay líderes del equipo en el análisis
+    const teamLeaders = ["Sebastian Gonzalez", "Mateo Rodriguez"];
+    const normalizedNames = entriesToAnalyze.map(e => normalizeName(e.name));
+    const leadersPresent = teamLeaders.filter(leader =>
+      normalizedNames.includes(normalizeName(leader))
+    );
+
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
@@ -419,7 +426,8 @@ function AIInsights({ entries, darkMode }: { entries: Entry[], darkMode: boolean
           summary,
           language,
           totalPeople,
-          totalEntries: entriesToAnalyze.length
+          totalEntries: entriesToAnalyze.length,
+          teamLeaders: leadersPresent
         })
       });
 
